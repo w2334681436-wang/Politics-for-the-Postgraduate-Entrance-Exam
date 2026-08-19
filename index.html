@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <meta name="description" content="以时间线串联 27 考研政治史纲 111 个考点的学习系统。" />
+    <title>考研政治·史纲时间线</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app" aria-label="考研政治史纲时间线学习系统">
+      <section id="timeline-viewport" class="timeline-viewport" aria-label="可拖动的史纲时间线">
+        <div id="timeline-stage" class="timeline-stage"></div>
+        <div id="drag-hint" class="drag-hint" aria-hidden="true">
+          <span class="mouse-mark"></span>
+          按住空白处拖动时间线
+        </div>
+      </section>
+
+      <nav class="toolbar" aria-label="时间线工具">
+        <button id="search-button" class="icon-button primary" type="button" aria-label="搜索知识点" title="搜索（Ctrl/⌘ + K）">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.7"></circle><path d="m16 16 4.2 4.2"></path></svg>
+        </button>
+        <button id="zoom-in" class="icon-button" type="button" aria-label="放大时间线" title="放大">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+        <button id="zoom-out" class="icon-button" type="button" aria-label="缩小时间线" title="缩小">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg>
+        </button>
+        <button id="reset-view" class="icon-button" type="button" aria-label="回到当前位置" title="回到当前考点">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+        </button>
+        <button id="info-button" class="icon-button" type="button" aria-label="查看使用说明" title="使用说明">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 11v6"></path><circle cx="12" cy="7.5" r=".7" class="fill"></circle></svg>
+        </button>
+      </nav>
+
+      <aside id="chapter-dock" class="chapter-dock" aria-label="章节快速定位"></aside>
+
+      <div class="status-bar" aria-live="polite">
+        <button id="previous-point" type="button" aria-label="上一个考点">←</button>
+        <button id="current-status" type="button" aria-label="打开当前考点">考点 1 / 111</button>
+        <button id="next-point" type="button" aria-label="下一个考点">→</button>
+      </div>
+
+      <div id="search-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="search-label" hidden>
+        <div class="modal-backdrop" data-close-modal></div>
+        <section class="search-panel">
+          <label id="search-label" for="search-input">搜索时间、事件或知识点</label>
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.7"></circle><path d="m16 16 4.2 4.2"></path></svg>
+            <input id="search-input" type="search" autocomplete="off" placeholder="例如：1840、五四运动、统一战线" />
+            <kbd>Esc</kbd>
+          </div>
+          <p id="search-summary" class="search-summary">可搜索全部 111 个考点与正文</p>
+          <div id="search-results" class="search-results" role="listbox"></div>
+        </section>
+      </div>
+
+      <aside id="detail-panel" class="detail-panel" aria-label="完整知识点" aria-hidden="true">
+        <div class="detail-toolbar">
+          <button id="detail-close" class="plain-icon" type="button" aria-label="关闭完整知识点">×</button>
+          <button id="learned-button" class="learned-button" type="button">标记已学</button>
+        </div>
+        <div id="detail-content" class="detail-content"></div>
+        <div class="detail-navigation">
+          <button id="detail-previous" type="button">← 上一个考点</button>
+          <button id="detail-next" type="button">下一个考点 →</button>
+        </div>
+      </aside>
+      <div id="detail-scrim" class="detail-scrim" hidden></div>
+
+      <div id="info-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="info-label" hidden>
+        <div class="modal-backdrop" data-close-info></div>
+        <section class="info-panel">
+          <button class="plain-icon info-close" type="button" data-close-info aria-label="关闭说明">×</button>
+          <p class="eyebrow">使用说明</p>
+          <h2 id="info-label">沿着时间线，把史纲串起来</h2>
+          <div class="info-grid">
+            <div><span>拖动</span><p>按住画面空白处横向或纵向拖动；触屏可直接滑动。</p></div>
+            <div><span>定位</span><p>搜索年份、事件、人物或正文，选择结果后自动移动到对应节点。</p></div>
+            <div><span>学习</span><p>点开卡片阅读 PDF 对应考点的完整文字，并可标记学习进度。</p></div>
+            <div><span>快捷键</span><p>← / → 切换考点，Ctrl/⌘ + K 搜索，Esc 关闭面板。</p></div>
+          </div>
+          <p id="source-note" class="source-note"></p>
+        </section>
+      </div>
+    </main>
+    <noscript>本学习系统需要启用 JavaScript。</noscript>
+    <script src="./data/timeline-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
