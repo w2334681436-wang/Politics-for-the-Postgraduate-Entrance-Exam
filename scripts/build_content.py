@@ -12,7 +12,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PDF = ROOT.parent / "upload" / "27徐涛强化班笔记-史纲【公众号：学长小谭考研】.pdf"
+UPLOAD_DIR = ROOT.parent / "upload"
+PDF = next(iter(sorted(UPLOAD_DIR.glob("*史纲*.pdf"))), UPLOAD_DIR / "史纲笔记.pdf")
 OUTPUT = ROOT / "data" / "timeline-data.js"
 
 CHAPTER_RE = re.compile(r"第([一二三四五六七八九十]+)章\s+(.+)")
@@ -36,6 +37,32 @@ CHAPTER_ANCHORS = {
     10: 2012,
 }
 
+# The PDF is organized by teaching points, while the product is organized by
+# historical time. Each retained knowledge point is assigned to the single
+# date that best represents the event it explains; other extracted dates stay
+# attached as related dates.
+PRIMARY_YEAR = {
+    3: 1840, 4: 1840, 5: 1840, 6: 1840, 7: 1840, 8: 1840, 9: 1840,
+    10: 1885, 11: 1900, 12: 1895, 13: 1840, 14: 1840,
+    15: 1851, 16: 1851, 17: 1861, 18: 1895, 19: 1898, 20: 1898,
+    21: 1901, 22: 1905, 23: 1905, 24: 1905, 25: 1911, 26: 1912,
+    27: 1911, 28: 1912, 29: 1912, 30: 1915, 31: 1917,
+    32: 1919, 33: 1919, 34: 1919, 35: 1920, 36: 1921, 37: 1922,
+    38: 1924, 39: 1927, 40: 1927, 41: 1928, 42: 1927, 43: 1927,
+    44: 1931, 45: 1935, 46: 1936, 47: 1935, 48: 1931, 49: 1931,
+    50: 1931, 51: 1931, 52: 1935, 53: 1935, 54: 1936, 55: 1937,
+    56: 1937, 57: 1937, 58: 1937, 59: 1939, 60: 1940, 61: 1939,
+    62: 1938, 63: 1940, 64: 1942, 65: 1945, 66: 1945, 67: 1945,
+    68: 1945, 69: 1945, 70: 1946, 71: 1947, 72: 1947, 73: 1947,
+    74: 1949, 75: 1947, 76: 1949, 77: 1949, 78: 1949, 79: 1949,
+    80: 1949, 81: 1953, 82: 1953, 83: 1953, 84: 1953, 85: 1953,
+    86: 1956, 87: 1956, 89: 1956, 91: 1957, 95: 1956, 96: 1978,
+}
+
+# The teacher explicitly treats these as brief background rather than taught
+# examination content. Points with no expanded body are filtered separately.
+EXCLUDED_BACKGROUND_POINTS = {1, 2, 84, 85}
+
 CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
 
@@ -55,6 +82,9 @@ def clean_line(raw: str) -> str:
     line = LEADING_META_RE.sub("", line)
     line = re.sub(r"\s+", " ", line).strip()
     line = re.sub(r"^◆\s*(?:逻辑框架图?|时间框架)\s*", "", line)
+    line = re.sub(r"【?公众号[：:]?[^】]*】?", "", line)
+    line = re.sub(r"学长[^】\s，,。]*", "", line)
+    line = re.sub(r"^涛言涛语[：:]\s*", "", line)
     line = line.replace("19178 年", "1978 年").replace("19178年", "1978年")
     return line
 
@@ -74,7 +104,8 @@ def should_drop(line: str) -> bool:
 
 
 def normalize_title(title: str) -> str:
-    title = re.sub(r"【公众号[^】]*】", "", title)
+    title = re.sub(r"【?公众号[：:]?[^】]*】?", "", title)
+    title = re.sub(r"学长[^】\s，,。]*", "", title)
     return re.sub(r"\s+", " ", title).strip(" ：:。")
 
 
@@ -263,24 +294,52 @@ def main() -> int:
         missing = sorted(set(expected) - set(numbers))
         duplicates = sorted(n for n, count in Counter(numbers).items() if count > 1)
         raise SystemExit(f"Point coverage failed. Missing={missing}, duplicates={duplicates}")
+    taught_points = [
+        point for point in points
+        if point["number"] not in EXCLUDED_BACKGROUND_POINTS
+        and not any(line["kind"] == "source-note" for line in point["content"])
+    ]
+    missing_primary = [point["number"] for point in taught_points if point["number"] not in PRIMARY_YEAR]
+    if missing_primary:
+        raise SystemExit(f"Missing primary-year decisions: {missing_primary}")
+
+    for point in taught_points:
+        point["primaryYear"] = PRIMARY_YEAR[point["number"]]
+        point["relatedYears"] = [year for year in point["years"] if year != point["primaryYear"]]
+
+    events = []
+    for year in sorted({point["primaryYear"] for point in taught_points}):
+        knowledge = [point for point in taught_points if point["primaryYear"] == year]
+        events.append({
+            "id": f"year-{year}",
+            "year": year,
+            "label": f"{year}年",
+            "chapters": sorted({point["chapter"] for point in knowledge}),
+            "knowledge": knowledge,
+            "searchText": " ".join(point["searchText"] for point in knowledge),
+        })
+
+    visible_chapter_numbers = sorted({point["chapter"] for point in taught_points})
+    visible_chapters = [chapter for chapter in chapters if chapter["number"] in visible_chapter_numbers]
     payload = {
         "meta": {
             "title": "考研政治·史纲时间线",
-            "source": pdf.name,
+            "source": "27考研政治史纲强化班笔记.pdf",
             "pageCount": len(text.split("\f")) - 1,
-            "pointCount": len(points),
-            "nodeCount": len(points) + len(supplements),
+            "sourcePointCount": len(points),
+            "knowledgeCount": len(taught_points),
+            "nodeCount": len(events),
+            "omittedCount": len(points) - len(taught_points),
             "generatedFromPdf": True,
         },
-        "chapters": chapters,
-        "points": points,
-        "supplements": supplements,
+        "chapters": visible_chapters,
+        "events": events,
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     OUTPUT.write_text(f"window.TIMELINE_DATA={encoded};\n", encoding="utf-8")
-    print(f"Wrote {OUTPUT} ({len(points)} points, {len(encoded):,} chars)")
-    print(f"Years covered: {min(y for p in points for y in p['years'])}-{max(y for p in points for y in p['years'])}")
+    print(f"Wrote {OUTPUT} ({len(events)} date nodes, {len(taught_points)} knowledge topics, {len(encoded):,} chars)")
+    print(f"Timeline: {events[0]['year']}-{events[-1]['year']}")
     return 0
 
 
