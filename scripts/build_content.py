@@ -59,9 +59,10 @@ PRIMARY_YEAR = {
     86: 1956, 87: 1956, 89: 1956, 91: 1957, 95: 1956, 96: 1978,
 }
 
-# The teacher explicitly treats these as brief background rather than taught
-# examination content. Points with no expanded body are filtered separately.
-EXCLUDED_BACKGROUND_POINTS = {1, 2, 84, 85}
+# Keep only material the handout treats as examinable. Empty headings are
+# filtered separately; these labels are explicit instructions from the teacher
+# that the topic is not part of the history-outline study burden.
+NON_EXAM_TITLE_RE = re.compile(r"非重点|未讲")
 
 CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
@@ -141,6 +142,33 @@ def merge_wrapped_lines(lines: list[dict]) -> list[dict]:
     return merged
 
 
+def prune_non_exam_content(point: dict, lines: list[dict]) -> list[dict]:
+    """Remove only spans the handout explicitly says are outside the exam."""
+    number = point["number"]
+
+    if number == 3:
+        # The teacher says the outbreak details are not a命题 direction, then
+        # switches to the examinable nature, treaties, privileges and effects.
+        first_exam_line = next(
+            (index for index, item in enumerate(lines) if "鸦片战争及其性质" in item["text"]),
+            None,
+        )
+        if first_exam_line is not None:
+            lines = lines[first_exam_line:]
+
+    cleaned = []
+    for item in lines:
+        text = item["text"]
+        if number == 31 and "考得不算太多" in text:
+            # Study-frequency commentary is not knowledge the learner must retain.
+            continue
+        if number == 54:
+            text = re.sub(r"1945-1949：解放战争时期\s*（不考）", "", text).strip()
+        if text:
+            cleaned.append({**item, "text": text})
+    return cleaned
+
+
 def finalize_point(point: dict | None) -> dict | None:
     if not point:
         return None
@@ -157,7 +185,7 @@ def finalize_point(point: dict | None) -> dict | None:
     if not lines:
         lines.append({"kind": "source-note", "text": "原笔记此处仅列出考点标题，未展开正文。"})
 
-    lines = merge_wrapped_lines(lines)
+    lines = prune_non_exam_content(point, merge_wrapped_lines(lines))
 
     text = "\n".join(item["text"] for item in lines)
     years = extract_years("\n".join([point["chapterTitle"], point["sectionTitle"], point["title"], text]))
@@ -296,7 +324,7 @@ def main() -> int:
         raise SystemExit(f"Point coverage failed. Missing={missing}, duplicates={duplicates}")
     taught_points = [
         point for point in points
-        if point["number"] not in EXCLUDED_BACKGROUND_POINTS
+        if not NON_EXAM_TITLE_RE.search(point["title"])
         and not any(line["kind"] == "source-note" for line in point["content"])
     ]
     missing_primary = [point["number"] for point in taught_points if point["number"] not in PRIMARY_YEAR]

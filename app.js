@@ -379,7 +379,7 @@
   window.addEventListener("appinstalled", () => { installButton.hidden = true; });
   window.addEventListener("resize", () => { clampPan(); queueTransform(); });
 
-  document.querySelector("#source-note").textContent = `内容来自 ${source.meta.pageCount} 页史纲笔记；仅保留有正文讲解的 ${source.meta.knowledgeCount} 项知识，按 ${source.meta.nodeCount} 个主要年份重新归并。`;
+  document.querySelector("#source-note").textContent = `内容来自 ${source.meta.pageCount} 页史纲笔记；已剔除未讲、无正文及明确标注非重点或不考的内容，仅保留 ${source.meta.knowledgeCount} 项考试知识，按 ${source.meta.nodeCount} 个主要年份归并。`;
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
   renderTimeline();
   renderDock();
