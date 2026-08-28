@@ -59,10 +59,11 @@ PRIMARY_YEAR = {
     86: 1956, 87: 1956, 89: 1956, 91: 1957, 95: 1956, 96: 1978,
 }
 
-# Keep only material the handout treats as examinable. Empty headings are
-# filtered separately; these labels are explicit instructions from the teacher
-# that the topic is not part of the history-outline study burden.
-NON_EXAM_TITLE_RE = re.compile(r"非重点|未讲")
+# These four entries are course-orientation/background headings rather than
+# expanded history-outline teaching points.  A title marked "非重点" is still
+# examinable at low frequency, so it must remain available to search and review.
+EXCLUDED_UNTAUGHT_POINTS = {1, 2, 84, 85}
+UNTAUGHT_TITLE_RE = re.compile(r"未讲")
 
 CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
@@ -147,14 +148,18 @@ def prune_non_exam_content(point: dict, lines: list[dict]) -> list[dict]:
     number = point["number"]
 
     if number == 3:
-        # The teacher says the outbreak details are not a命题 direction, then
-        # switches to the examinable nature, treaties, privileges and effects.
-        first_exam_line = next(
-            (index for index, item in enumerate(lines) if "鸦片战争及其性质" in item["text"]),
-            None,
+        # Remove the long trade/economic anecdote, but retain the factual bridge
+        # about the Qing ban on opium before the examinable Humen destruction.
+        background_markers = (
+            "鸦片战争的细节多",
+            "这场战争爆发的逻辑",
+            "那既然有这个矛盾",
+            "在跟中国做生意的过程当中",
         )
-        if first_exam_line is not None:
-            lines = lines[first_exam_line:]
+        lines = [
+            item for item in lines
+            if not item["text"].startswith(background_markers)
+        ]
 
     cleaned = []
     for item in lines:
@@ -324,7 +329,8 @@ def main() -> int:
         raise SystemExit(f"Point coverage failed. Missing={missing}, duplicates={duplicates}")
     taught_points = [
         point for point in points
-        if not NON_EXAM_TITLE_RE.search(point["title"])
+        if point["number"] not in EXCLUDED_UNTAUGHT_POINTS
+        and not UNTAUGHT_TITLE_RE.search(point["title"])
         and not any(line["kind"] == "source-note" for line in point["content"])
     ]
     missing_primary = [point["number"] for point in taught_points if point["number"] not in PRIMARY_YEAR]
@@ -334,6 +340,11 @@ def main() -> int:
     for point in taught_points:
         point["primaryYear"] = PRIMARY_YEAR[point["number"]]
         point["relatedYears"] = [year for year in point["years"] if year != point["primaryYear"]]
+        # “五四运动” is written without its year in this overview, so the
+        # extractor cannot infer the final stage of national awakening.
+        if point["number"] == 14 and 1919 not in point["relatedYears"]:
+            point["relatedYears"].append(1919)
+            point["relatedYears"].sort()
 
     events = []
     for year in sorted({point["primaryYear"] for point in taught_points}):

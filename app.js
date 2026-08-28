@@ -194,7 +194,7 @@
   function renderKnowledge(point) {
     const parts = titleParts(point.title);
     const related = relatedYears(point, Infinity);
-    return `<section class="knowledge-section ${importanceOf(point.title)}">
+    return `<section id="${escapeHtml(point.id)}" class="knowledge-section ${importanceOf(point.title)}">
       <div class="knowledge-kicker"><span>第 ${point.chapter} 章</span><span>笔记第 ${point.sourcePage} 页</span></div>
       <h3>${escapeHtml(parts.clean)}</h3>
       <div class="knowledge-tags">${badgeMarkup(point.title)}${related}</div>
@@ -245,17 +245,25 @@
 
   function getMatches(query) {
     const term = normalize(query);
-    if (!term) return events.slice(0, 12);
-    return events.map((event) => {
-      const titles = normalize(event.knowledge.map((point) => point.title).join(" "));
-      const body = normalize(event.searchText);
-      let score = 0;
-      if (String(event.year) === term || normalize(event.label) === term) score += 120;
-      if (titles.includes(term)) score += 70;
-      if (body.includes(term)) score += 25;
-      if (event.knowledge.some((point) => (point.relatedYears || []).some((year) => String(year) === term))) score += 45;
-      return { event, score };
-    }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.event.year - b.event.year).slice(0, 36).map((item) => item.event);
+    if (!term) return events.slice(0, 12).map((event) => ({ event, point: null, score: 0 }));
+    const matches = [];
+    events.forEach((event) => {
+      const exactYear = String(event.year) === term || normalize(event.label) === term;
+      if (exactYear) matches.push({ event, point: null, score: 120 });
+      event.knowledge.forEach((point) => {
+        const title = normalize(point.title);
+        const body = normalize(point.searchText);
+        let score = 0;
+        if (title === term) score += 100;
+        else if (title.includes(term)) score += 70;
+        if (body.includes(term)) score += 25;
+        if ((point.relatedYears || []).some((year) => String(year) === term)) score += 45;
+        if (score) matches.push({ event, point, score });
+      });
+    });
+    return matches
+      .sort((a, b) => b.score - a.score || a.event.year - b.event.year || (a.point?.number || 0) - (b.point?.number || 0))
+      .slice(0, 60);
   }
 
   function openSearch() {
@@ -268,23 +276,37 @@
 
   function renderSearchResults(query) {
     const matches = getMatches(query);
-    searchSummary.textContent = query ? `找到 ${matches.length} 个时间节点，选择后自动定位` : `可搜索 ${source.meta.nodeCount} 个时间节点和全部正文`;
+    searchSummary.textContent = query ? `找到 ${matches.length} 条结果，选择后定位到具体知识点` : `可搜索 ${source.meta.nodeCount} 个时间节点和全部正文`;
     if (!matches.length) {
       searchResults.innerHTML = '<div class="empty-results">没有找到对应内容，试试年份或更短的关键词。</div>';
       return;
     }
-    searchResults.innerHTML = matches.map((event, index) => {
-      const names = event.knowledge.slice(0, 3).map((point) => titleParts(point.title).clean).join("、");
-      return `<button class="search-result" type="button" role="option" aria-selected="${index === 0}" data-result-id="${event.id}"><span class="result-number">${event.label}</span><span class="result-main"><strong>${escapeHtml(names)}${event.knowledge.length > 3 ? `等 ${event.knowledge.length} 项` : ""}</strong><span>${escapeHtml(previewOf(event.knowledge[0]))}</span></span><span class="result-years">${event.knowledge.length} 项知识</span></button>`;
+    searchResults.innerHTML = matches.map(({ event, point }, index) => {
+      const names = point
+        ? titleParts(point.title).clean
+        : event.knowledge.slice(0, 3).map((item) => titleParts(item.title).clean).join("、");
+      const preview = point ? previewOf(point) : previewOf(event.knowledge[0]);
+      const suffix = !point && event.knowledge.length > 3 ? `等 ${event.knowledge.length} 项` : "";
+      return `<button class="search-result" type="button" role="option" aria-selected="${index === 0}" data-event-id="${event.id}" data-point-id="${point?.id || ""}"><span class="result-number">${event.label}</span><span class="result-main"><strong>${escapeHtml(names)}${suffix}</strong><span>${escapeHtml(preview)}</span></span><span class="result-years">${point ? `考点 ${point.number}` : `${event.knowledge.length} 项知识`}</span></button>`;
     }).join("");
-    searchResults.querySelectorAll(".search-result").forEach((result) => result.addEventListener("click", () => chooseSearchResult(result.dataset.resultId)));
+    searchResults.querySelectorAll(".search-result").forEach((result) => result.addEventListener("click", () => chooseSearchResult(result.dataset.eventId, result.dataset.pointId)));
   }
 
-  function chooseSearchResult(id) {
+  function chooseSearchResult(id, pointId = "") {
     closeSearch();
     const index = eventIndex.get(id);
     focusEvent(index, true);
-    window.setTimeout(() => openDetail(id), 300);
+    window.setTimeout(() => {
+      openDetail(id);
+      if (!pointId) return;
+      requestAnimationFrame(() => {
+        const target = document.getElementById(pointId);
+        if (!target) return;
+        target.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        target.classList.add("search-hit");
+        window.setTimeout(() => target.classList.remove("search-hit"), 1800);
+      });
+    }, 300);
   }
 
   function moveDetail(delta) {
@@ -354,8 +376,8 @@
       return;
     }
     if (!searchDialog.hidden && event.key === "Enter") {
-      const first = searchResults.querySelector("[data-result-id]");
-      if (first) chooseSearchResult(first.dataset.resultId);
+      const first = searchResults.querySelector("[data-event-id]");
+      if (first) chooseSearchResult(first.dataset.eventId, first.dataset.pointId);
       return;
     }
     if (event.target.matches("input, textarea")) return;
@@ -379,7 +401,7 @@
   window.addEventListener("appinstalled", () => { installButton.hidden = true; });
   window.addEventListener("resize", () => { clampPan(); queueTransform(); });
 
-  document.querySelector("#source-note").textContent = `内容来自 ${source.meta.pageCount} 页史纲笔记；已剔除未讲、无正文及明确标注非重点或不考的内容，仅保留 ${source.meta.knowledgeCount} 项考试知识，按 ${source.meta.nodeCount} 个主要年份归并。`;
+  document.querySelector("#source-note").textContent = `内容来自 ${source.meta.pageCount} 页史纲笔记；已剔除未讲、无正文及明确标注不考的内容，低频考点仍保留并弱化显示，共 ${source.meta.knowledgeCount} 项知识，按 ${source.meta.nodeCount} 个主要年份归并。`;
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
   renderTimeline();
   renderDock();

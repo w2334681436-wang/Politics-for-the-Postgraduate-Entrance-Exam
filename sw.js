@@ -1,4 +1,4 @@
-const CACHE_NAME = "history-timeline-v3";
+const CACHE_NAME = "history-timeline-v4";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -31,6 +31,6 @@ self.addEventListener("fetch", (event) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
       return response;
-    }).catch(() => caches.match("./index.html")))
+    }).catch(() => event.request.mode === "navigate" ? caches.match("./index.html") : Response.error()))
   );
 });

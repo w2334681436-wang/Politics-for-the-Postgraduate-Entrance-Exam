@@ -393,6 +393,11 @@ kbd { padding: 3px 6px; border: 1px solid #d8d0c3; border-bottom-width: 2px; bor
 .knowledge-section { padding: 33px 0 24px; border-bottom: 1px solid #e8e2d8; }
 .knowledge-section.major { border-left: 4px solid var(--accent); padding-left: 24px; }
 .knowledge-section.secondary { opacity: .88; }
+.knowledge-section.search-hit { animation: search-hit 1.8s ease-out; }
+@keyframes search-hit {
+  0%, 35% { background: #fff1bd; box-shadow: 0 0 0 12px #fff1bd; }
+  100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+}
 .knowledge-kicker { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 8px; color: var(--muted); font-size: 11px; letter-spacing: .05em; }
 .knowledge-section h3 { margin: 0; font-family: "Noto Serif SC", "Songti SC", SimSun, serif; font-size: clamp(25px,3.5vw,34px); line-height: 1.35; letter-spacing: .01em; }
 .knowledge-section.major h3 { color: #1d2522; font-size: clamp(29px,4vw,39px); font-weight: 900; }
