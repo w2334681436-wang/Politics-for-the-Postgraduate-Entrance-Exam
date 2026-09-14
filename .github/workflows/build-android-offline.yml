@@ -3,6 +3,7 @@ name: Build Offline Android APK
 on:
   push:
     branches:
+      - main
       - android-offline-build
     paths:
       - 'android-offline/**'
