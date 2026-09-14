@@ -1,0 +1,100 @@
+name: Build Offline Android APK
+
+on:
+  push:
+    branches:
+      - android-offline-build
+    paths:
+      - 'android-offline/**'
+      - 'index.html'
+      - 'app.js'
+      - 'styles.css'
+      - 'data/**'
+      - 'assets/**'
+      - '.github/workflows/build-android-offline.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Prepare bundled offline web assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEB='android-offline/app/src/main/assets/www'
+          rm -rf "$WEB"
+          mkdir -p "$WEB/data" "$WEB/assets"
+          cp index.html app.js styles.css manifest.webmanifest sw.js "$WEB/"
+          cp -R data/. "$WEB/data/"
+          cp -R assets/. "$WEB/assets/"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android-offline/app/src/main/assets/www/app.js')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('  if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));\n', '')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          mkdir -p android-offline/app/src/main/res/drawable
+          cp assets/icons/icon-512.png android-offline/app/src/main/res/drawable/app_icon.png
+
+          if grep -RInE '(src|href)=["'"']https?://|url\(["'"']?https?://' index.html app.js styles.css data assets; then
+            echo 'External runtime dependency found; refusing to build a not-fully-offline APK.' >&2
+            exit 1
+          fi
+
+      - name: Build installable APK
+        run: gradle --project-dir android-offline :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK is self-contained and has no INTERNET permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='android-offline/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'assets/www/index.html'
+          unzip -l "$APK" | grep -q 'assets/www/data/timeline-data.js'
+          unzip -l "$APK" | grep -q 'assets/www/styles.css'
+          apkanalyzer manifest permissions "$APK" | tee android-offline/permissions.txt
+          if grep -q 'android.permission.INTERNET' android-offline/permissions.txt; then
+            echo 'INTERNET permission unexpectedly present.' >&2
+            exit 1
+          fi
+          sha256sum "$APK" | tee android-offline/sha256.txt
+          cp "$APK" 'android-offline/史纲时间线-完全离线版-v1.0.apk'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Politics-Timeline-Offline-Android-v1.0
+          path: |
+            android-offline/史纲时间线-完全离线版-v1.0.apk
+            android-offline/permissions.txt
+            android-offline/sha256.txt
+          if-no-files-found: error
+          compression-level: 0
