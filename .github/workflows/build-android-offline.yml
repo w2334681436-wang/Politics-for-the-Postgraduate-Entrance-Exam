@@ -55,19 +55,44 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('android-offline/app/src/main/assets/www/app.js')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('  if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));\n', '')
-          p.write_text(s, encoding='utf-8')
+          import re
+
+          bundled_app = Path('android-offline/app/src/main/assets/www/app.js')
+          source = bundled_app.read_text(encoding='utf-8')
+          source = source.replace(
+              '  if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));\n',
+              ''
+          )
+          bundled_app.write_text(source, encoding='utf-8')
+
+          text_suffixes = {'.html', '.css', '.js', '.json', '.webmanifest', '.svg', '.txt'}
+          roots = [Path('index.html'), Path('app.js'), Path('styles.css'), Path('manifest.webmanifest'), Path('data'), Path('assets')]
+          files = []
+          for root in roots:
+              if root.is_file():
+                  files.append(root)
+              elif root.exists():
+                  files.extend(
+                      p for p in root.rglob('*')
+                      if p.is_file() and (p.suffix.lower() in text_suffixes or p.name.endswith('.webmanifest'))
+                  )
+
+          external_ref = re.compile(r'''(?:src|href)\s*=\s*["']https?://|url\(\s*["']?https?://''', re.IGNORECASE)
+          hits = []
+          for path in files:
+              text = path.read_text(encoding='utf-8', errors='ignore')
+              if external_ref.search(text):
+                  hits.append(str(path))
+
+          if hits:
+              print('External runtime dependency found; refusing to build a not-fully-offline APK:')
+              for hit in hits:
+                  print(f' - {hit}')
+              raise SystemExit(1)
           PY
 
           mkdir -p android-offline/app/src/main/res/drawable
           cp assets/icons/icon-512.png android-offline/app/src/main/res/drawable/app_icon.png
-
-          if grep -RInE '(src|href)=["'"']https?://|url\(["'"']?https?://' index.html app.js styles.css data assets; then
-            echo 'External runtime dependency found; refusing to build a not-fully-offline APK.' >&2
-            exit 1
-          fi
 
       - name: Build installable APK
         run: gradle --project-dir android-offline :app:assembleDebug --no-daemon --stacktrace
