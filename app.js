@@ -137,8 +137,30 @@
   function clampPan() {
     const stageWidth = stageStart * 2 + events.length * spacing;
     panX = Math.min(170, Math.max(window.innerWidth - stageWidth * scale - 170, panX));
-    const allowance = Math.max(110, (stageHeight * scale - window.innerHeight) / 2 + 120);
-    panY = Math.min(allowance, Math.max(-allowance, panY));
+
+    // Allow every card, including the alternating cards above/below the axis,
+    // to be placed exactly at the vertical centre of the viewport.
+    const maxPanY = window.innerHeight / 2;
+    const minPanY = window.innerHeight / 2 - stageHeight * scale;
+    panY = Math.min(maxPanY, Math.max(minPanY, panY));
+  }
+
+  function getEventCardCenter(index) {
+    const event = events[index];
+    const node = event ? stage.querySelector(`[data-event-id="${event.id}"]`) : null;
+    const card = node?.querySelector(".node-card");
+
+    if (!node || !card) {
+      return {
+        x: stageStart + index * spacing + 178,
+        y: axisY
+      };
+    }
+
+    return {
+      x: node.offsetLeft + card.offsetLeft + card.offsetWidth / 2,
+      y: node.offsetTop + card.offsetTop + card.offsetHeight / 2
+    };
   }
 
   function setScale(nextScale, centerX = window.innerWidth / 2, centerY = window.innerHeight / 2) {
@@ -153,9 +175,14 @@
   function focusEvent(index, animate = true) {
     currentIndex = Math.max(0, Math.min(events.length - 1, index));
     localStorage.setItem("history-timeline-current-v2", String(currentIndex));
-    panX = window.innerWidth / 2 - (stageStart + currentIndex * spacing + 170) * scale;
-    panY = window.innerHeight / 2 - axisY * scale;
+
+    // Focus the card itself instead of the timeline axis. This keeps the
+    // active knowledge card centred both horizontally and vertically.
+    const cardCenter = getEventCardCenter(currentIndex);
+    panX = window.innerWidth / 2 - cardCenter.x * scale;
+    panY = window.innerHeight / 2 - cardCenter.y * scale;
     clampPan();
+
     if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       stage.style.transition = "transform .55s cubic-bezier(.2,.8,.2,1)";
       window.setTimeout(() => { stage.style.transition = ""; }, 570);
